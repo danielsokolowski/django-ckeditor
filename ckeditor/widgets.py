@@ -23,6 +23,12 @@ class CKEditorWidget(forms.Textarea):
         'width': 618,
         'filebrowserWindowWidth': 940,
         'filebrowserWindowHeight': 747,
+        # TODO: is there a way to make it understand django templates
+        # For example the {% spaceless %} ... {% endspacess %} means 
+        # all of template would be hidden --- I think here is no easy way
+        #'protectedSource': ['{%\s(\w*)[\s\S]*?\1\s%}', '{{[\s\S]*?}}'],
+        'protectedSource': [],
+        'emailProtection': 'encode'
         # later on we initialize 'filebrowserUploadUrl' and 'filebrowserBrowseUrl' which are dynamic
     }
 
@@ -65,11 +71,30 @@ class CKEditorWidget(forms.Textarea):
             self.config['filebrowserUploadUrl'] = reverse('ckeditor_upload') # shared among class
             self.config['filebrowserBrowseUrl'] = reverse('ckeditor_browse') # shared among class
         
-        
-        
         if value is None: value = ''
         final_attrs = self.build_attrs(attrs, name=name)
-        return mark_safe(u'''<textarea%s>%s</textarea>
+
+        
+        # build non encodable
+        non_encodable = ''
+        for item in self.config['protectedSource']:
+            non_encodable += 'CKEDITOR.config.protectedSource.push(/%s/g);\n' % item
+        
+        # we need to remove some settings that we manually re-add on run time
+        # for example regular expression are not encodable as json
+        cleaned_settings = self.config.copy()
+        del cleaned_settings['protectedSource']
+        
+        
+        return mark_safe(u'''
+        <textarea%s>%s</textarea>
         <script type="text/javascript">
             CKEDITOR.replace("%s", %s);
-        </script>''' % (flatatt(final_attrs), conditional_escape(force_unicode(value)), final_attrs['id'], json_encode(self.config)))
+            
+            // further settings that are not json encodable
+            %s
+        </script>
+        ''' % (flatatt(final_attrs), 
+               conditional_escape(force_unicode(value)), final_attrs['id'], json_encode(cleaned_settings),
+               non_encodable
+               ))
